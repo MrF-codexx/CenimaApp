@@ -109,5 +109,26 @@ namespace CemaApp.Controllers
 
             return RedirectToAction(nameof(Index));
         }
+
+        // POST: Bookings/Remove/5
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Remove(int id)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var booking = await _context.Bookings
+                .FirstOrDefaultAsync(b => b.Id == id && b.UserId == userId);
+
+            if (booking == null) return NotFound();
+
+            if (booking.Status == BookingStatus.Cancelled)
+            {
+                _context.Bookings.Remove(booking);
+                await _context.SaveChangesAsync();
+                TempData["Message"] = "Booking removed from history.";
+            }
+
+            return RedirectToAction(nameof(Index));
+        }
     }
 }
