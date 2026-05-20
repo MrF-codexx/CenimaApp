@@ -1,0 +1,203 @@
+@model CemaApp.Models.Screening
+
+@{
+    ViewData["Title"] = "Select Your Seats";
+}
+
+<div class="container py-4">
+    <div class="row">
+        <!-- Sidebar: Movie Info -->
+        <div class="col-md-3">
+            <div class="card bg-dark border-secondary shadow sticky-top" style="top: 20px;">
+                <img src="/images/posters/@Model.Movie.PosterUrl" class="card-img-top" alt="@Model.Movie.Title">
+                <div class="card-body">
+                    <h5 class="fw-bold">@Model.Movie.Title</h5>
+                    <p class="text-muted small">@Model.Hall.Name | @Model.StartTime.ToString("MMM dd, HH:mm")</p>
+                    <hr class="border-secondary">
+                    
+                    <div id="timerContainer" class="text-center p-3 mb-3 rounded bg-secondary-subtle border border-danger">
+                        <div class="text-uppercase small fw-bold text-danger">Time remaining</div>
+                        <div id="countdown" class="display-6 fw-bold text-white">07:00</div>
+                    </div>
+
+                    <div id="selectionSummary">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Selected:</span>
+                            <span id="selectedCount" class="fw-bold">0</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-3 text-success">
+                            <span>Total Price:</span>
+                            <span id="totalPrice" class="fw-bold">$0.00</span>
+                        </div>
+                        <form asp-action="ConfirmBooking" method="post">
+                            <input type="hidden" name="screeningId" value="@Model.Id" />
+                            <div id="selectedSeatsInputs"></div>
+                            <button type="submit" id="confirmBtn" class="btn btn-cema w-100 btn-lg disabled">Confirm Booking</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main: Seat Grid -->
+        <div class="col-md-9 ps-lg-5">
+            <div class="cinema-room text-center">
+                <div class="screen-container mb-5">
+                    <div class="screen shadow-lg">SCREEN</div>
+                </div>
+
+                <div id="seatGrid" class="d-flex flex-column gap-2 align-items-center">
+                    <!-- Seats injected via JS -->
+                    <div class="spinner-border text-danger py-5" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+
+                <div class="legend mt-5 d-flex justify-content-center gap-4 border-top border-secondary pt-4">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="seat-sample available"></div> <span class="small">Available</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="seat-sample selected"></div> <span class="small">Selected</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="seat-sample locked"></div> <span class="small">In Progress</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="seat-sample booked"></div> <span class="small">Booked</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <style>
+        .screen-container { perspective: 500px; }
+        .screen {
+            height: 50px; background: linear-gradient(to bottom, #fff, #888);
+            transform: rotateX(-30deg); box-shadow: 0 10px 20px rgba(255,255,255,0.2);
+            border-radius: 5px; color: #333; font-weight: bold; line-height: 50px;
+        }
+        .seat {
+            width: 35px; height: 35px; background-color: #333; border-radius: 5px 5px 0 0;
+            cursor: pointer; transition: 0.2s; display: flex; align-items: center;
+            justify-content: center; font-size: 10px; color: transparent;
+        }
+        .seat:hover:not(.booked):not(.locked) { background-color: #555; color: white; }
+        .seat.available { background-color: #22c55e; }
+        .seat.selected { background-color: #eab308; color: black; box-shadow: 0 0 10px #eab308; }
+        .seat.locked { background-color: #ef4444; opacity: 0.5; cursor: not-allowed; }
+        .seat.booked { background-color: #4b5563; cursor: not-allowed; }
+        .seat-sample { width: 15px; height: 15px; border-radius: 3px; }
+        .row-label { width: 30px; font-weight: bold; color: #666; }
+    </style>
+
+    <script>
+        const screeningId = @Model.Id;
+        const ticketPrice = @Model.Price.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+        let selectedSeats = [];
+        let timerSeconds = @ViewBag.RemainingSeconds; // Calculated by server from existing pending booking
+
+        function updateUI() {
+            fetch(`/Booking/GetSeats?screeningId=${screeningId}`)
+                .then(res => res.json())
+                .then(data => renderGrid(data));
+        }
+
+        function renderGrid(seats) {
+            const grid = document.getElementById('seatGrid');
+            grid.innerHTML = '';
+            
+            // Group seats by row
+            const rows = {};
+            seats.forEach(s => {
+                if (!rows[s.row]) rows[s.row] = [];
+                rows[s.row].push(s);
+            });
+
+            Object.keys(rows).sort().forEach(rowKey => {
+                const rowDiv = document.createElement('div');
+                rowDiv.className = 'd-flex gap-2 align-items-center';
+                
+                const label = document.createElement('div');
+                label.className = 'row-label';
+                label.innerText = rowKey;
+                rowDiv.appendChild(label);
+
+                rows[rowKey].sort((a,b) => a.number - b.number).forEach(seat => {
+                    const sDiv = document.createElement('div');
+                    sDiv.className = `seat ${seat.state.toLowerCase()}`;
+                    sDiv.innerText = seat.number;
+                    sDiv.onclick = () => toggleSeat(seat.id, seat.state);
+                    rowDiv.appendChild(sDiv);
+                });
+
+                grid.appendChild(rowDiv);
+            });
+        }
+
+        function toggleSeat(id, state) {
+            if (state === 'Booked' || state === 'Locked') return;
+
+            fetch('/Booking/ToggleSeat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `screeningId=${screeningId}&seatId=${id}`
+            }).then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        if (selectedSeats.includes(id)) {
+                            selectedSeats = selectedSeats.filter(s => s !== id);
+                        } else {
+                            selectedSeats.push(id);
+                        }
+                        updateSelectionUI();
+                        updateUI(); // Refresh grid
+                    } else {
+                        alert("Could not lock seat. It may have just been taken.");
+                    }
+                });
+        }
+
+        function updateSelectionUI() {
+            document.getElementById('selectedCount').innerText = selectedSeats.length;
+            document.getElementById('totalPrice').innerText = `$${(selectedSeats.length * ticketPrice).toFixed(2)}`;
+            
+            const inputs = document.getElementById('selectedSeatsInputs');
+            inputs.innerHTML = '';
+            selectedSeats.forEach(id => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'selectedSeatIds';
+                input.value = id;
+                inputs.appendChild(input);
+            });
+
+            const btn = document.getElementById('confirmBtn');
+            if (selectedSeats.length > 0) {
+                btn.classList.remove('disabled');
+            } else {
+                btn.classList.add('disabled');
+            }
+        }
+
+        // Timer Logic
+        setInterval(() => {
+            if (timerSeconds > 0) {
+                timerSeconds--;
+                const m = Math.floor(timerSeconds / 60);
+                const s = timerSeconds % 60;
+                document.getElementById('countdown').innerText = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            } else {
+                alert("Session expired! Please refresh to start again.");
+                window.location.reload();
+            }
+        }, 1000);
+
+        // Initial Load and Polling
+        updateUI();
+        setInterval(updateUI, 10000); // Polling every 10 seconds to see other people's locks
+    </script>
+}
