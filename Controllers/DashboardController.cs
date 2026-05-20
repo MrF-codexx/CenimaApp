@@ -106,7 +106,14 @@ namespace CemaApp.Controllers
             {
                 if (Enum.TryParse<BookingStatus>(filterStatus, out var statusEnum))
                 {
-                    query = query.Where(b => b.Status == statusEnum);
+                    if (statusEnum == BookingStatus.Cancelled)
+                    {
+                        query = query.Where(b => b.Status == BookingStatus.Cancelled || b.Status == BookingStatus.RemovedByUser);
+                    }
+                    else
+                    {
+                        query = query.Where(b => b.Status == statusEnum);
+                    }
                 }
             }
 

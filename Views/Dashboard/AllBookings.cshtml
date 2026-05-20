@@ -137,7 +137,7 @@
                                 else
                                 {
                                     <span class="status-badge-sm @(booking.Status == CemaApp.Models.BookingStatus.Confirmed ? "bg-success-subtle text-success" : "bg-danger-subtle text-danger")">
-                                        @booking.Status
+                                        @(booking.Status == CemaApp.Models.BookingStatus.RemovedByUser ? "Cancelled" : booking.Status.ToString())
                                     </span>
                                 }
                             </td>

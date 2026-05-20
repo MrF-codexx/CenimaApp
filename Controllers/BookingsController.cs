@@ -123,7 +123,7 @@ namespace CemaApp.Controllers
 
             if (booking.Status == BookingStatus.Cancelled)
             {
-                _context.Bookings.Remove(booking);
+                booking.Status = BookingStatus.RemovedByUser;
                 await _context.SaveChangesAsync();
                 TempData["Message"] = "Booking removed from history.";
             }

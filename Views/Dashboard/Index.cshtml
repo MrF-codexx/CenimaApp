@@ -201,8 +201,8 @@
                                     <td class="small">@booking.BookingDate.ToString("MMM dd, HH:mm")</td>
                                     <td class="text-success fw-bold">@booking.Amount.ToString("C")</td>
                                     <td>
-                                        <span class="status-badge-sm @(booking.Status == BookingStatus.Confirmed ? "bg-success-subtle text-success" : "bg-warning-subtle text-warning")">
-                                            @booking.Status
+                                        <span class="status-badge-sm @(booking.Status == BookingStatus.Confirmed ? "bg-success-subtle text-success" : "bg-danger-subtle text-danger")">
+                                            @(booking.Status == BookingStatus.RemovedByUser ? "Cancelled" : booking.Status.ToString())
                                         </span>
                                     </td>
                                 </tr>

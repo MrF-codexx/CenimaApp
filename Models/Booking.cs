@@ -7,7 +7,8 @@ namespace CemaApp.Models
     {
         Pending,
         Confirmed,
-        Cancelled
+        Cancelled,
+        RemovedByUser
     }
     [Table("Booking")]
     public class Booking
