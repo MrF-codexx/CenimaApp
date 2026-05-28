@@ -96,8 +96,12 @@
                     <option value="PriceAsc" selected="@(Model.SortBy == "PriceAsc")">Price (Low-High)</option>
                 </select>
             </div>
-            <div class="col-md-2 d-flex align-items-end">
-                <button type="submit" class="btn btn-danger w-100">Apply Filters</button>
+            <div class="col-md-2 d-flex align-items-end gap-2">
+                <button type="submit" class="btn btn-danger flex-grow-1">Apply</button>
+                @if (!string.IsNullOrEmpty(Model.SearchMovieName) || !string.IsNullOrEmpty(Model.FilterStatus) || (!string.IsNullOrEmpty(Model.SortBy) && Model.SortBy != "DateDesc"))
+                {
+                    <a asp-action="AllBookings" class="btn btn-outline-secondary" title="Clear Filters"><i class="bi bi-x-lg"></i></a>
+                }
             </div>
         </form>
     </div>

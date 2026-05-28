@@ -37,9 +37,9 @@ namespace CemaApp.Services
             var existingPendingLock = await _context.BookingSeats
                 .Include(bs => bs.Booking)
                 .FirstOrDefaultAsync(bs => bs.Booking.ScreeningId == screeningId
-                                        && bs.SeatId == seatId
-                                        && bs.Booking.Status == BookingStatus.Pending
-                                        && bs.Booking.UserId != userId);
+                                         && bs.SeatId == seatId
+                                         && bs.Booking.Status == BookingStatus.Pending
+                                         && bs.Booking.UserId != userId);
 
             if (existingPendingLock != null)
             {
@@ -52,32 +52,65 @@ namespace CemaApp.Services
 
             var cacheKey = GetCacheKey(screeningId, seatId);
 
-            // 3. Check if seat is locked in MemoryCache
-            if (_cache.TryGetValue(cacheKey, out string existingUserId))
-            {
-                if (existingUserId != userId)
-                {
-                    return false; // Locked by someone else
-                }
-                // Already locked by this user, extend the 7-minute window
-            }
+            // 3. Check if seat is already locked by the current user (Toggle/Deselect action)
+            bool isLockedBySelfInCache = _cache.TryGetValue(cacheKey, out string? cachedUserId) && cachedUserId == userId;
 
-            // 4. Set the lock with 7-minute expiration in cache
-            var cacheOptions = new MemoryCacheEntryOptions()
-                .SetAbsoluteExpiration(TimeSpan.FromMinutes(LOCK_MINUTES));
-
-            _cache.Set(cacheKey, userId, cacheOptions);
-
-            // 5. Create or update a Pending booking in the database
             var pendingBooking = await _context.Bookings
                 .Include(b => b.BookingSeats)
                 .FirstOrDefaultAsync(b => b.ScreeningId == screeningId
                                        && b.UserId == userId
                                        && b.Status == BookingStatus.Pending);
 
+            bool isLockedBySelfInDb = pendingBooking != null && pendingBooking.BookingSeats.Any(bs => bs.SeatId == seatId);
+
+            if (isLockedBySelfInCache || isLockedBySelfInDb)
+            {
+                // Remove lock from cache
+                _cache.Remove(cacheKey);
+
+                // Remove seat from pending booking in DB
+                if (pendingBooking != null)
+                {
+                    var seatToRemove = pendingBooking.BookingSeats.FirstOrDefault(bs => bs.SeatId == seatId);
+                    if (seatToRemove != null)
+                    {
+                        _context.BookingSeats.Remove(seatToRemove);
+                        
+                        var screening = await _context.Screenings.FindAsync(screeningId);
+                        if (screening != null)
+                        {
+                            int remainingCount = pendingBooking.BookingSeats.Count - 1;
+                            if (remainingCount > 0)
+                            {
+                                pendingBooking.TotalPrice = remainingCount * screening.Price;
+                            }
+                            else
+                            {
+                                // No seats left, clean up the pending booking header
+                                _context.Bookings.Remove(pendingBooking);
+                            }
+                        }
+                    }
+                    await _context.SaveChangesAsync();
+                }
+                return true;
+            }
+
+            // 4. Check if seat is locked in MemoryCache by someone else
+            if (_cache.TryGetValue(cacheKey, out string? existingUserId) && existingUserId != userId)
+            {
+                return false; // Locked by someone else
+            }
+
+            // 5. Set the lock with 7-minute expiration in cache
+            var cacheOptions = new MemoryCacheEntryOptions()
+                .SetAbsoluteExpiration(TimeSpan.FromMinutes(LOCK_MINUTES));
+
+            _cache.Set(cacheKey, userId, cacheOptions);
+
+            // 6. Create a new Pending booking if one doesn't exist
             if (pendingBooking == null)
             {
-                // Create a new pending booking
                 var screening = await _context.Screenings.FindAsync(screeningId);
                 if (screening == null) return false;
 
@@ -93,7 +126,7 @@ namespace CemaApp.Services
                 await _context.SaveChangesAsync();
             }
 
-            // Check if this seat is already in the pending booking
+            // 7. Add seat to the pending booking
             var alreadyAdded = pendingBooking.BookingSeats.Any(bs => bs.SeatId == seatId);
             if (!alreadyAdded)
             {
@@ -103,7 +136,6 @@ namespace CemaApp.Services
                     SeatId = seatId
                 });
 
-                // Update the total price
                 var screening2 = await _context.Screenings.FindAsync(screeningId);
                 if (screening2 != null)
                 {
@@ -198,21 +230,34 @@ namespace CemaApp.Services
             var screening = await _context.Screenings
                 .Include(s => s.Hall)
                 .ThenInclude(h => h.Seats)
+                .AsNoTracking()
                 .FirstOrDefaultAsync(s => s.Id == screeningId);
 
             if (screening == null) return new List<SeatDto>();
 
             // Get all booked seats for this screening in one DB hit
             var bookedSeatIds = await _context.BookingSeats
+                .AsNoTracking()
                 .Where(bs => bs.Booking.ScreeningId == screeningId && bs.Booking.Status == BookingStatus.Confirmed)
                 .Select(bs => bs.SeatId)
                 .ToListAsync();
 
             // Get all pending-locked seats from other users
             var pendingLockedSeatIds = await _context.BookingSeats
+                .AsNoTracking()
                 .Where(bs => bs.Booking.ScreeningId == screeningId
                           && bs.Booking.Status == BookingStatus.Pending
                           && bs.Booking.UserId != userId
+                          && bs.Booking.BookingDate.AddMinutes(LOCK_MINUTES) > DateTime.Now)
+                .Select(bs => bs.SeatId)
+                .ToListAsync();
+
+            // Get all pending-locked seats from the current user (fallback if cache is cleared)
+            var currentUserPendingSeatIds = await _context.BookingSeats
+                .AsNoTracking()
+                .Where(bs => bs.Booking.ScreeningId == screeningId
+                          && bs.Booking.Status == BookingStatus.Pending
+                          && bs.Booking.UserId == userId
                           && bs.Booking.BookingDate.AddMinutes(LOCK_MINUTES) > DateTime.Now)
                 .Select(bs => bs.SeatId)
                 .ToListAsync();
@@ -230,6 +275,10 @@ namespace CemaApp.Services
                 else if (pendingLockedSeatIds.Contains(seat.Id))
                 {
                     state = SeatState.Locked;
+                }
+                else if (currentUserPendingSeatIds.Contains(seat.Id))
+                {
+                    state = SeatState.Selected;
                 }
                 else
                 {

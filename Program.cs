@@ -56,6 +56,37 @@ namespace CemaApp
             }
 
             app.UseHttpsRedirection();
+
+            // Intercept external poster URLs and redirect to online resource
+            app.Use(async (context, next) =>
+            {
+                var requestPath = context.Request.Path.Value ?? string.Empty;
+                if (requestPath.StartsWith("/images/posters/", StringComparison.OrdinalIgnoreCase))
+                {
+                    var path = requestPath.Substring("/images/posters/".Length);
+                    if (path.StartsWith("https://", StringComparison.OrdinalIgnoreCase) || 
+                        path.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var redirectUrl = path + context.Request.QueryString.Value;
+                        context.Response.Redirect(redirectUrl);
+                        return;
+                    }
+                    if (path.StartsWith("https:/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var redirectUrl = "https://" + path.Substring("https:/".Length) + context.Request.QueryString.Value;
+                        context.Response.Redirect(redirectUrl);
+                        return;
+                    }
+                    if (path.StartsWith("http:/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var redirectUrl = "http://" + path.Substring("http:/".Length) + context.Request.QueryString.Value;
+                        context.Response.Redirect(redirectUrl);
+                        return;
+                    }
+                }
+                await next();
+            });
+
             app.UseStaticFiles();
 
             app.UseRouting();

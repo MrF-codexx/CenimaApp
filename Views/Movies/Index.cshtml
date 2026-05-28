@@ -78,6 +78,32 @@
         }
     </div>
 
+    <!-- Pagination -->
+    @if (ViewBag.TotalPages > 1)
+    {
+        <nav class="mt-5">
+            <ul class="pagination justify-content-center" data-bs-theme="dark">
+                <li class="page-item @(!ViewBag.HasPreviousPage ? "disabled" : "")">
+                    <a class="page-link bg-dark text-white border-secondary" 
+                       href="?searchString=@ViewBag.CurrentSearch&genre=@ViewBag.CurrentGenre&page=@(ViewBag.CurrentPage - 1)">Previous</a>
+                </li>
+                
+                @for (int i = 1; i <= ViewBag.TotalPages; i++)
+                {
+                    <li class="page-item @(i == ViewBag.CurrentPage ? "active" : "")">
+                        <a class="page-link @(i == ViewBag.CurrentPage ? "bg-danger border-danger" : "bg-dark text-white border-secondary")" 
+                           href="?searchString=@ViewBag.CurrentSearch&genre=@ViewBag.CurrentGenre&page=@i">@i</a>
+                    </li>
+                }
+
+                <li class="page-item @(!ViewBag.HasNextPage ? "disabled" : "")">
+                    <a class="page-link bg-dark text-white border-secondary" 
+                       href="?searchString=@ViewBag.CurrentSearch&genre=@ViewBag.CurrentGenre&page=@(ViewBag.CurrentPage + 1)">Next</a>
+                </li>
+            </ul>
+        </nav>
+    }
+
     @if (!Model.Any())
     {
         <div class="text-center py-5">

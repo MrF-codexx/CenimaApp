@@ -30,6 +30,10 @@
                         {
                             videoId = Model.TrailerUrl.Split("youtu.be/")[1].Split("?")[0];
                         }
+                        else if (Model.TrailerUrl.Contains("embed/"))
+                        {
+                            videoId = Model.TrailerUrl.Split("embed/")[1].Split("?")[0];
+                        }
                     }
                     @if (!string.IsNullOrEmpty(videoId))
                     {

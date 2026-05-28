@@ -18,7 +18,7 @@ namespace CemaApp.Controllers
         }
         // Public View: Anyone can see the list of movies with optional filtering
         [AllowAnonymous]
-        public async Task<IActionResult> Index(string? searchString, string? genre)
+        public async Task<IActionResult> Index(string? searchString, string? genre, int page = 1)
         {
             var query = _context.Movies.AsNoTracking().AsQueryable();
 
@@ -33,7 +33,18 @@ namespace CemaApp.Controllers
                 query = query.Where(m => m.Genre == genre);
             }
 
-            var movies = await query.ToListAsync();
+            // Pagination parameters
+            int pageSize = 10;
+            int totalRecords = await query.CountAsync();
+            int totalPages = (int)Math.Ceiling(totalRecords / (double)pageSize);
+
+            if (page < 1) page = 1;
+            if (totalPages > 0 && page > totalPages) page = totalPages;
+
+            var movies = await query
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
             
             // Get unique genres for the filter dropdown
             ViewBag.Genres = await _context.Movies
@@ -45,6 +56,10 @@ namespace CemaApp.Controllers
 
             ViewBag.CurrentSearch = searchString;
             ViewBag.CurrentGenre = genre;
+            ViewBag.CurrentPage = page;
+            ViewBag.TotalPages = totalPages;
+            ViewBag.HasPreviousPage = page > 1;
+            ViewBag.HasNextPage = page < totalPages;
 
             return View(movies);
         }
